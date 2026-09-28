@@ -1,6 +1,5 @@
 package com.Leon.accommodation_finder.dto;
 
-import com.Leon.accommodation_finder.model.Role;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
@@ -8,12 +7,8 @@ import lombok.NoArgsConstructor;
 @Getter
 @Setter
 @NoArgsConstructor
-public class UserResponseDto {
+public class OtpResponseDto {
 
-    private Long id;
-    private String firstName;
-    private String lastName;
     private String email;
-    private Role role;
     private String message;
 }

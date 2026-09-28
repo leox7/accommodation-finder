@@ -30,7 +30,8 @@ public class AdminService {
             for (User user : userRepository.findAll()) {
                 UserResponseDto dto = new UserResponseDto();
                 dto.setId(user.getId());
-                dto.setName(user.getName());
+                dto.setFirstName(user.getFirstName());
+                dto.setLastName(user.getLastName());
                 dto.setEmail(user.getEmail());
                 dto.setRole(user.getRole());
                 users.add(dto);

@@ -34,7 +34,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
 
-            if (jwtUtil.isValid(token)) {
+            // a refresh token must never be accepted here, it can only be used
+            // at the dedicated /api/auth/refresh endpoint to obtain a new access token
+            if (jwtUtil.isValid(token) && !jwtUtil.isRefreshToken(token)) {
                 String email = jwtUtil.getEmail(token);
                 String role = jwtUtil.getRole(token).name();
 

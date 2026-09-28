@@ -3,8 +3,11 @@ package com.Leon.accommodation_finder.controller;
 import com.Leon.accommodation_finder.dto.LandlordRegisterDto;
 import com.Leon.accommodation_finder.dto.LoginDto;
 import com.Leon.accommodation_finder.dto.LoginResponseDto;
+import com.Leon.accommodation_finder.dto.OtpResponseDto;
+import com.Leon.accommodation_finder.dto.RefreshTokenDto;
 import com.Leon.accommodation_finder.dto.StudentRegisterDto;
 import com.Leon.accommodation_finder.dto.UserResponseDto;
+import com.Leon.accommodation_finder.dto.VerifyOtpDto;
 import com.Leon.accommodation_finder.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,7 +39,17 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public LoginResponseDto login(@Valid @RequestBody LoginDto dto) {
+    public OtpResponseDto login(@Valid @RequestBody LoginDto dto) {
         return authService.login(dto);
+    }
+
+    @PostMapping("/verify-otp")
+    public LoginResponseDto verifyOtp(@Valid @RequestBody VerifyOtpDto dto) {
+        return authService.verifyOtp(dto);
+    }
+
+    @PostMapping("/refresh")
+    public LoginResponseDto refreshToken(@Valid @RequestBody RefreshTokenDto dto) {
+        return authService.refreshToken(dto);
     }
 }
