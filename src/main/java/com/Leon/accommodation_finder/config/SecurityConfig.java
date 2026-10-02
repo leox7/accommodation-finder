@@ -55,8 +55,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         // Swagger's own page and the generated API description
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        // a landlord's own listings need a token, this must stay above the public GET rule
+                        .requestMatchers(HttpMethod.GET, "/api/listings/my").authenticated()
                         // browsing listings is open to everyone
                         .requestMatchers(HttpMethod.GET, "/api/listings/**").permitAll()
+                        // listing photos must open in a browser or <img> tag without a token
+                        .requestMatchers(HttpMethod.GET, "/uploads/listings/**").permitAll()
                         // everything else needs a valid token
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

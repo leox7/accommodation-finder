@@ -1,8 +1,10 @@
 package com.Leon.accommodation_finder.service;
 
 import com.Leon.accommodation_finder.dto.UserResponseDto;
+import com.Leon.accommodation_finder.model.Landlord;
 import com.Leon.accommodation_finder.model.User;
 import com.Leon.accommodation_finder.repository.UserRepository;
+import com.Leon.accommodation_finder.util.MaskingUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +36,9 @@ public class AdminService {
                 dto.setLastName(user.getLastName());
                 dto.setEmail(user.getEmail());
                 dto.setRole(user.getRole());
+                if (user instanceof Landlord landlord) {
+                    dto.setNationalIdNumber(MaskingUtil.maskNationalId(landlord.getNationalIdNumber()));
+                }
                 users.add(dto);
             }
 
