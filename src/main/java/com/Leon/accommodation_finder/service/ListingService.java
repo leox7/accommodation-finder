@@ -7,11 +7,14 @@ import com.Leon.accommodation_finder.dto.PagedResponse;
 import com.Leon.accommodation_finder.exception.ListingNotFoundException;
 import com.Leon.accommodation_finder.exception.DuplicateListingTitleException;
 import com.Leon.accommodation_finder.exception.ListingOwnershipException;
+import com.Leon.accommodation_finder.exception.ListingHasActiveBookingsException;
+import com.Leon.accommodation_finder.model.BookingStatus;
 import com.Leon.accommodation_finder.model.Landlord;
 import com.Leon.accommodation_finder.model.Listing;
 import com.Leon.accommodation_finder.model.ListingImage;
 import com.Leon.accommodation_finder.model.ListingStatus;
 import com.Leon.accommodation_finder.model.RoomType;
+import com.Leon.accommodation_finder.repository.BookingRepository;
 import com.Leon.accommodation_finder.repository.LandlordRepository;
 import com.Leon.accommodation_finder.repository.ListingRepository;
 import org.slf4j.Logger;
@@ -38,13 +41,15 @@ public class ListingService {
     private final ListingRepository listingRepository;
     private final LandlordRepository landlordRepository;
     private final ListingImageService listingImageService;
+    private final BookingRepository bookingRepository;
 
     @Autowired
     public ListingService(ListingRepository listingRepository, LandlordRepository landlordRepository,
-                          ListingImageService listingImageService) {
+                          ListingImageService listingImageService, BookingRepository bookingRepository) {
         this.listingRepository = listingRepository;
         this.landlordRepository = landlordRepository;
         this.listingImageService = listingImageService;
+        this.bookingRepository = bookingRepository;
     }
 
     public PagedResponse<ListingResponseDto> searchListings(String keyword, RoomType roomType, ListingStatus status,
@@ -138,6 +143,18 @@ public class ListingService {
         }
     }
 
+    // a simple manual override, bookings are still decided by date overlap, not by this flag
+    public ListingResponseDto updateListingStatus(Long id, ListingStatus status, String landlordEmail) {
+        try {
+            Listing listing = findOwnedListing(id, landlordEmail);
+            listing.setStatus(status);
+            return toResponse(listingRepository.save(listing));
+        } catch (Exception e) {
+            logger.error("Error while updating status of listing with id {}: {}", id, e.getMessage());
+            throw e;
+        }
+    }
+
     public ListingImageResponseDto uploadImage(Long id, MultipartFile file, boolean isPrimary, String landlordEmail) {
         try {
             Listing listing = findOwnedListing(id, landlordEmail);
@@ -159,7 +176,7 @@ public class ListingService {
     }
 
     // isAdmin lets an admin delete any listing, a landlord can only delete their own.
-    // Transactional because the image rows and the listing row are deleted together.
+    // Transactional because the booking rows, image rows and the listing row are deleted together.
     @Transactional
     public void deleteListing(Long id, String userEmail, boolean isAdmin) {
         try {
@@ -173,7 +190,15 @@ public class ListingService {
                 throw new ListingOwnershipException();
             }
 
-            // images point at the listing, so they must be removed first
+            // a listing with pending or confirmed bookings must stay, students are relying on it
+            if (bookingRepository.existsByListingIdAndStatusIn(
+                    id, List.of(BookingStatus.PENDING, BookingStatus.CONFIRMED))) {
+                throw new ListingHasActiveBookingsException();
+            }
+
+            // bookings and images point at the listing, so they must be removed first.
+            // Only cancelled or vacated bookings can be left at this point.
+            bookingRepository.deleteByListingId(id);
             listingImageService.deleteAllImages(id);
             listingRepository.delete(listing);
         } catch (Exception e) {

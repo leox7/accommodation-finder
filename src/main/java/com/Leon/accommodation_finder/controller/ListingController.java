@@ -3,6 +3,7 @@ package com.Leon.accommodation_finder.controller;
 import com.Leon.accommodation_finder.dto.ListingImageResponseDto;
 import com.Leon.accommodation_finder.dto.ListingRequestDto;
 import com.Leon.accommodation_finder.dto.ListingResponseDto;
+import com.Leon.accommodation_finder.dto.ListingStatusRequestDto;
 import com.Leon.accommodation_finder.dto.PagedResponse;
 import com.Leon.accommodation_finder.model.ListingStatus;
 import com.Leon.accommodation_finder.model.RoomType;
@@ -69,6 +70,15 @@ public class ListingController {
     public ListingResponseDto updateListing(@PathVariable Long id, @Valid @RequestBody ListingRequestDto request) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return listingService.updateListing(id, request, email);
+    }
+
+    // manual override, the landlord marks their own listing AVAILABLE or OCCUPIED
+    @PreAuthorize("hasRole('LANDLORD')")
+    @PutMapping("/{id}/status")
+    public ListingResponseDto updateListingStatus(@PathVariable Long id,
+                                                  @Valid @RequestBody ListingStatusRequestDto request) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return listingService.updateListingStatus(id, request.getStatus(), email);
     }
 
     @PreAuthorize("hasAnyRole('LANDLORD', 'ADMIN')")
