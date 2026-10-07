@@ -1,0 +1,15 @@
+# Local development services. Start with: docker compose up -d
+# The default logins (RabbitMQ guest/guest, Redis with no password) are for local development only.
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: accommodation-rabbitmq
+    ports:
+      - "5672:5672"     # the app talks to RabbitMQ on this port
+      - "15672:15672"   # management web page, http://localhost:15672
+
+  redis:
+    image: redis:7
+    container_name: accommodation-redis
+    ports:
+      - "6379:6379"

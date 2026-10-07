@@ -11,8 +11,8 @@ import com.Leon.accommodation_finder.dto.VerifyOtpDto;
 import com.Leon.accommodation_finder.exception.EmailAlreadyExistsException;
 import com.Leon.accommodation_finder.exception.InvalidCredentialsException;
 import com.Leon.accommodation_finder.exception.InvalidOtpException;
-import com.Leon.accommodation_finder.exception.InvalidRefreshTokenException;
 import com.Leon.accommodation_finder.exception.InvalidStudentEmailException;
+import com.Leon.accommodation_finder.messaging.DomainEvent;
 import com.Leon.accommodation_finder.model.Landlord;
 import com.Leon.accommodation_finder.model.Role;
 import com.Leon.accommodation_finder.model.Student;
@@ -24,6 +24,7 @@ import com.Leon.accommodation_finder.security.JwtUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
@@ -45,6 +46,8 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final OtpService otpService;
     private final EmailService emailService;
+    private final RefreshTokenService refreshTokenService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public AuthService(UserRepository userRepository,
@@ -54,7 +57,9 @@ public class AuthService {
                        JwtUtil jwtUtil,
                        AuthenticationManager authenticationManager,
                        OtpService otpService,
-                       EmailService emailService) {
+                       EmailService emailService,
+                       RefreshTokenService refreshTokenService,
+                       ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
         this.landlordRepository = landlordRepository;
@@ -63,6 +68,8 @@ public class AuthService {
         this.authenticationManager = authenticationManager;
         this.otpService = otpService;
         this.emailService = emailService;
+        this.refreshTokenService = refreshTokenService;
+        this.eventPublisher = eventPublisher;
     }
 
     public UserResponseDto registerStudent(StudentRegisterDto dto) {
@@ -86,6 +93,8 @@ public class AuthService {
             student.setRole(Role.STUDENT);
 
             Student saved = studentRepository.save(student);
+            eventPublisher.publishEvent(new DomainEvent("auth.registered", email, "STUDENT",
+                    "User", saved.getId(), "Student account registered"));
             return toUserResponse(saved, "Student account created successfully");
         } catch (Exception e) {
             logger.error("Error while registering student with email '{}': {}", dto.getEmail(), e.getMessage());
@@ -113,6 +122,8 @@ public class AuthService {
             landlord.setRole(Role.LANDLORD);
 
             Landlord saved = landlordRepository.save(landlord);
+            eventPublisher.publishEvent(new DomainEvent("auth.registered", email, "LANDLORD",
+                    "User", saved.getId(), "Landlord account registered"));
             return toUserResponse(saved, "Landlord account created successfully");
         } catch (Exception e) {
             logger.error("Error while registering landlord with email '{}': {}", dto.getEmail(), e.getMessage());
@@ -122,6 +133,9 @@ public class AuthService {
 
     // Step one of login: checks the password, and if correct, emails an OTP
     // rather than returning a token. Nobody is fully logged in yet.
+    // Keep login and verifyOtp WITHOUT @Transactional: their failure events are published just
+    // before an exception is thrown. With no transaction they are sent straight away, inside a
+    // transaction the exception would roll it back and the failure event would never be sent.
     public OtpResponseDto login(LoginDto dto) {
         try {
             String email = dto.getEmail().trim().toLowerCase();
@@ -130,6 +144,8 @@ public class AuthService {
                 authenticationManager.authenticate(
                         new UsernamePasswordAuthenticationToken(email, dto.getPassword()));
             } catch (AuthenticationException authEx) {
+                eventPublisher.publishEvent(new DomainEvent("auth.login_failed", email, null,
+                        "User", null, "Wrong email or password"));
                 throw new InvalidCredentialsException();
             }
 
@@ -137,6 +153,11 @@ public class AuthService {
 
             emailService.sendEmail(email, "Your Accommodation Finder login code",
                     "Your one time login code is " + otp + ". It expires in 5 minutes.");
+
+            // never put the OTP in an event
+            User user = userRepository.findByEmail(email).orElseThrow(InvalidCredentialsException::new);
+            eventPublisher.publishEvent(new DomainEvent("auth.login_succeeded", email, user.getRole().name(),
+                    "User", user.getId(), "Password correct, OTP emailed"));
 
             OtpResponseDto response = new OtpResponseDto();
             response.setEmail(email);
@@ -154,6 +175,8 @@ public class AuthService {
             String email = dto.getEmail().trim().toLowerCase();
 
             if (!otpService.isValid(email, dto.getOtp())) {
+                eventPublisher.publishEvent(new DomainEvent("auth.otp_failed", email, null,
+                        "User", null, "Wrong or expired OTP"));
                 throw new InvalidOtpException();
             }
             otpService.clearOtp(email);
@@ -168,8 +191,12 @@ public class AuthService {
             response.setEmail(user.getEmail());
             response.setRole(user.getRole());
             response.setToken(jwtUtil.generateAccessToken(user));
-            response.setRefreshToken(jwtUtil.generateRefreshToken(user));
+            // the hash of this refresh token is stored, so it can be checked and revoked later
+            response.setRefreshToken(refreshTokenService.createRefreshToken(user));
             response.setMessage("Login successful");
+
+            eventPublisher.publishEvent(new DomainEvent("auth.otp_verified", email, user.getRole().name(),
+                    "User", user.getId(), "OTP verified, tokens issued"));
             return response;
         } catch (Exception e) {
             logger.error("Error while verifying OTP for email '{}': {}", dto.getEmail(), e.getMessage());
@@ -178,19 +205,11 @@ public class AuthService {
     }
 
     // Uses a valid refresh token to issue a new access token, without needing
-    // the password or OTP again. The refresh token itself is not reissued,
-    // it stays valid until its own, longer expiry.
+    // the password or OTP again. The used refresh token is revoked and a new one
+    // is returned (rotation), so each refresh token works only once.
     public LoginResponseDto refreshToken(RefreshTokenDto dto) {
         try {
-            String token = dto.getRefreshToken();
-
-            if (!jwtUtil.isValid(token) || !jwtUtil.isRefreshToken(token)) {
-                throw new InvalidRefreshTokenException();
-            }
-
-            String email = jwtUtil.getEmail(token);
-            User user = userRepository.findByEmail(email)
-                    .orElseThrow(InvalidRefreshTokenException::new);
+            User user = refreshTokenService.useRefreshToken(dto.getRefreshToken());
 
             LoginResponseDto response = new LoginResponseDto();
             response.setId(user.getId());
@@ -199,12 +218,22 @@ public class AuthService {
             response.setEmail(user.getEmail());
             response.setRole(user.getRole());
             response.setToken(jwtUtil.generateAccessToken(user));
+            response.setRefreshToken(refreshTokenService.createRefreshToken(user));
             response.setMessage("Access token refreshed successfully");
+
+            eventPublisher.publishEvent(new DomainEvent("auth.token_refreshed", user.getEmail(), user.getRole().name(),
+                    "User", user.getId(), "Refresh token rotated"));
             return response;
         } catch (Exception e) {
             logger.error("Error while refreshing token: {}", e.getMessage());
             throw e;
         }
+    }
+
+    // Revokes the given refresh token. Access tokens already issued keep working
+    // until they expire (10 minutes at most), so the frontend must throw them away.
+    public void logout(RefreshTokenDto dto) {
+        refreshTokenService.logout(dto.getRefreshToken());
     }
 
     private UserResponseDto toUserResponse(User user, String message) {

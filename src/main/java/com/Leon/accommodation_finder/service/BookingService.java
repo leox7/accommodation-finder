@@ -13,6 +13,7 @@ import com.Leon.accommodation_finder.exception.InvalidBookingDatesException;
 import com.Leon.accommodation_finder.exception.ListingNotAvailableException;
 import com.Leon.accommodation_finder.exception.ListingNotFoundException;
 import com.Leon.accommodation_finder.exception.StudentHasActiveBookingException;
+import com.Leon.accommodation_finder.messaging.DomainEvent;
 import com.Leon.accommodation_finder.model.Booking;
 import com.Leon.accommodation_finder.model.BookingStatus;
 import com.Leon.accommodation_finder.model.Listing;
@@ -24,6 +25,7 @@ import com.Leon.accommodation_finder.repository.StudentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -45,13 +47,15 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final ListingRepository listingRepository;
     private final StudentRepository studentRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public BookingService(BookingRepository bookingRepository, ListingRepository listingRepository,
-                          StudentRepository studentRepository) {
+                          StudentRepository studentRepository, ApplicationEventPublisher eventPublisher) {
         this.bookingRepository = bookingRepository;
         this.listingRepository = listingRepository;
         this.studentRepository = studentRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     // studentEmail is the currently logged in student, taken from their JWT, never from the request body
@@ -96,8 +100,12 @@ public class BookingService {
             // status and dateCreated are system controlled, a new booking always starts as pending
             booking.setStatus(BookingStatus.PENDING);
             booking.setDateCreated(LocalDateTime.now());
+            Booking saved = bookingRepository.save(booking);
 
-            return toResponse(bookingRepository.save(booking));
+            // the landlord is emailed by the notification consumer, which finds them from this booking id
+            eventPublisher.publishEvent(new DomainEvent("booking.created", studentEmail, "STUDENT",
+                    "Booking", saved.getId(), "Booking requested on listing " + listing.getId()));
+            return toResponse(saved);
         } catch (Exception e) {
             logger.error("Error while creating booking for listing with id {}: {}", request.getListingId(), e.getMessage());
             throw e;
@@ -128,7 +136,11 @@ public class BookingService {
             }
 
             booking.setStatus(BookingStatus.CANCELLED);
-            return toResponse(bookingRepository.save(booking));
+            Booking saved = bookingRepository.save(booking);
+
+            eventPublisher.publishEvent(new DomainEvent("booking.cancelled", studentEmail, "STUDENT",
+                    "Booking", saved.getId(), "Booking cancelled by the student"));
+            return toResponse(saved);
         } catch (Exception e) {
             logger.error("Error while cancelling booking with id {}: {}", id, e.getMessage());
             throw e;
@@ -174,10 +186,20 @@ public class BookingService {
             bookingRepository.save(booking);
             listingRepository.save(listing);
 
-            // the other students asking for the same dates can no longer get them
+            // the other students asking for the same dates can no longer get them.
+            // They are read first only so each one gets its own auto cancelled event.
+            List<Booking> autoCancelled = bookingRepository.findOverlappingPending(
+                    listing.getId(), booking.getId(), booking.getStartDate(), booking.getEndDate());
             bookingRepository.cancelOverlappingPending(
                     listing.getId(), booking.getId(), booking.getStartDate(), booking.getEndDate());
 
+            // these events wait until the transaction commits, a rollback sends none of them
+            eventPublisher.publishEvent(new DomainEvent("booking.confirmed", landlordEmail, "LANDLORD",
+                    "Booking", booking.getId(), "Booking confirmed on listing " + listing.getId()));
+            for (Booking other : autoCancelled) {
+                eventPublisher.publishEvent(new DomainEvent("booking.auto_cancelled", "SYSTEM", "SYSTEM",
+                        "Booking", other.getId(), "Cancelled because booking " + booking.getId() + " was confirmed"));
+            }
             return toResponse(booking);
         } catch (Exception e) {
             logger.error("Error while confirming booking with id {}: {}", id, e.getMessage());
@@ -212,6 +234,8 @@ public class BookingService {
                 listingRepository.save(listing);
             }
 
+            eventPublisher.publishEvent(new DomainEvent("booking.vacated", studentEmail, "STUDENT",
+                    "Booking", booking.getId(), "Student vacated listing " + listing.getId()));
             return toResponse(booking);
         } catch (Exception e) {
             logger.error("Error while vacating booking with id {}: {}", id, e.getMessage());

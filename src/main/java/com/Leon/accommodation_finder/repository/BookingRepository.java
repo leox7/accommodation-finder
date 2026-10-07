@@ -48,6 +48,16 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query("SELECT b FROM Booking b WHERE LOWER(b.listing.landlord.email) = LOWER(:email)")
     Page<Booking> findLandlordBookings(@Param("email") String email, Pageable pageable);
 
+    // the same bookings that cancelOverlappingPending will cancel, read first so each one gets an event
+    @Query("SELECT b FROM Booking b WHERE b.listing.id = :listingId " +
+            "AND b.status = com.Leon.accommodation_finder.model.BookingStatus.PENDING " +
+            "AND b.id <> :bookingId " +
+            "AND b.startDate <= :endDate AND b.endDate >= :startDate")
+    List<Booking> findOverlappingPending(@Param("listingId") Long listingId,
+                                         @Param("bookingId") Long bookingId,
+                                         @Param("startDate") LocalDate startDate,
+                                         @Param("endDate") LocalDate endDate);
+
     // used when a booking is confirmed: every other PENDING request on the same listing
     // whose dates overlap the confirmed stay is cancelled in one statement.
     // Must be called inside a transaction (the calling service method is @Transactional).
