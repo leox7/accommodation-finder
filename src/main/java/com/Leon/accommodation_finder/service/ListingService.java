@@ -8,6 +8,7 @@ import com.Leon.accommodation_finder.exception.ListingNotFoundException;
 import com.Leon.accommodation_finder.exception.DuplicateListingTitleException;
 import com.Leon.accommodation_finder.exception.ListingOwnershipException;
 import com.Leon.accommodation_finder.exception.ListingHasActiveBookingsException;
+import com.Leon.accommodation_finder.exception.ListingHasPaymentsException;
 import com.Leon.accommodation_finder.messaging.DomainEvent;
 import com.Leon.accommodation_finder.model.BookingStatus;
 import com.Leon.accommodation_finder.model.Landlord;
@@ -18,6 +19,7 @@ import com.Leon.accommodation_finder.model.RoomType;
 import com.Leon.accommodation_finder.repository.BookingRepository;
 import com.Leon.accommodation_finder.repository.LandlordRepository;
 import com.Leon.accommodation_finder.repository.ListingRepository;
+import com.Leon.accommodation_finder.repository.PaymentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,16 +46,18 @@ public class ListingService {
     private final LandlordRepository landlordRepository;
     private final ListingImageService listingImageService;
     private final BookingRepository bookingRepository;
+    private final PaymentRepository paymentRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public ListingService(ListingRepository listingRepository, LandlordRepository landlordRepository,
                           ListingImageService listingImageService, BookingRepository bookingRepository,
-                          ApplicationEventPublisher eventPublisher) {
+                          PaymentRepository paymentRepository, ApplicationEventPublisher eventPublisher) {
         this.listingRepository = listingRepository;
         this.landlordRepository = landlordRepository;
         this.listingImageService = listingImageService;
         this.bookingRepository = bookingRepository;
+        this.paymentRepository = paymentRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -217,6 +221,12 @@ public class ListingService {
             if (bookingRepository.existsByListingIdAndStatusIn(
                     id, List.of(BookingStatus.PENDING, BookingStatus.CONFIRMED))) {
                 throw new ListingHasActiveBookingsException();
+            }
+
+            // payments are money records and must never be deleted, and they point at the bookings
+            // deleted below, so a listing that has any payment (even a failed one) must stay
+            if (paymentRepository.existsForListing(id)) {
+                throw new ListingHasPaymentsException();
             }
 
             // bookings and images point at the listing, so they must be removed first.

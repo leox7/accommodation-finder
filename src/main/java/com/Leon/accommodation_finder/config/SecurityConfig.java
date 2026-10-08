@@ -63,6 +63,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/listings/**").permitAll()
                         // listing photos must open in a browser or <img> tag without a token
                         .requestMatchers(HttpMethod.GET, "/uploads/listings/**").permitAll()
+                        // Safaricom calls the M-Pesa callback without a token
+                        .requestMatchers(HttpMethod.POST, "/api/payments/callback").permitAll()
                         // everything else needs a valid token
                         .anyRequest().authenticated())
                 // a missing, expired or refresh token gives 401 (Spring's default would be 403)

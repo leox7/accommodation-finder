@@ -9,4 +9,12 @@ public class MaskingUtil {
         }
         return "****" + nationalId.substring(nationalId.length() - 4);
     }
+
+    // 254712345678 becomes 2547****678. Null or 7 characters or fewer becomes ****
+    public static String maskPhoneNumber(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.length() <= 7) {
+            return "****";
+        }
+        return phoneNumber.substring(0, 4) + "****" + phoneNumber.substring(phoneNumber.length() - 3);
+    }
 }
