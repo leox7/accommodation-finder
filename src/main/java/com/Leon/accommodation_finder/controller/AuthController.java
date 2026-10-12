@@ -52,4 +52,11 @@ public class AuthController {
     public LoginResponseDto refreshToken(@Valid @RequestBody RefreshTokenDto dto) {
         return authService.refreshToken(dto);
     }
+
+    // always 200, even for an unknown, expired or already revoked token
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@Valid @RequestBody RefreshTokenDto dto) {
+        authService.logout(dto);
+        return ResponseEntity.ok().build();
+    }
 }

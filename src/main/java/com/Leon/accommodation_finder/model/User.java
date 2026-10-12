@@ -37,5 +37,10 @@ public abstract class User {
     @Enumerated(EnumType.STRING)
     private Role role;
 
+    // false once an admin deactivates the account, the user can then no longer log in.
+    // The database default of true keeps every existing user enabled when the column is added.
+    @Column(nullable = false, columnDefinition = "boolean default true")
+    private boolean enabled = true;
+
     private LocalDateTime dateCreated = LocalDateTime.now();
 }

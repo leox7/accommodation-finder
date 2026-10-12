@@ -8,6 +8,8 @@ import com.Leon.accommodation_finder.exception.ListingNotFoundException;
 import com.Leon.accommodation_finder.exception.DuplicateListingTitleException;
 import com.Leon.accommodation_finder.exception.ListingOwnershipException;
 import com.Leon.accommodation_finder.exception.ListingHasActiveBookingsException;
+import com.Leon.accommodation_finder.exception.ListingHasPaymentsException;
+import com.Leon.accommodation_finder.messaging.DomainEvent;
 import com.Leon.accommodation_finder.model.BookingStatus;
 import com.Leon.accommodation_finder.model.Landlord;
 import com.Leon.accommodation_finder.model.Listing;
@@ -17,9 +19,11 @@ import com.Leon.accommodation_finder.model.RoomType;
 import com.Leon.accommodation_finder.repository.BookingRepository;
 import com.Leon.accommodation_finder.repository.LandlordRepository;
 import com.Leon.accommodation_finder.repository.ListingRepository;
+import com.Leon.accommodation_finder.repository.PaymentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -42,14 +46,19 @@ public class ListingService {
     private final LandlordRepository landlordRepository;
     private final ListingImageService listingImageService;
     private final BookingRepository bookingRepository;
+    private final PaymentRepository paymentRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public ListingService(ListingRepository listingRepository, LandlordRepository landlordRepository,
-                          ListingImageService listingImageService, BookingRepository bookingRepository) {
+                          ListingImageService listingImageService, BookingRepository bookingRepository,
+                          PaymentRepository paymentRepository, ApplicationEventPublisher eventPublisher) {
         this.listingRepository = listingRepository;
         this.landlordRepository = landlordRepository;
         this.listingImageService = listingImageService;
         this.bookingRepository = bookingRepository;
+        this.paymentRepository = paymentRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     public PagedResponse<ListingResponseDto> searchListings(String keyword, RoomType roomType, ListingStatus status,
@@ -111,8 +120,11 @@ public class ListingService {
             listing.setLandlord(landlord);
             // status is system controlled, a new listing always starts as available
             listing.setStatus(ListingStatus.AVAILABLE);
+            Listing saved = listingRepository.save(listing);
 
-            return toResponse(listingRepository.save(listing));
+            eventPublisher.publishEvent(new DomainEvent("listing.created", landlordEmail, "LANDLORD",
+                    "Listing", saved.getId(), "Listing '" + saved.getTitle() + "' created"));
+            return toResponse(saved);
         } catch (Exception e) {
             logger.error("Error while creating listing with title '{}': {}", request.getTitle(), e.getMessage());
             throw e;
@@ -136,7 +148,11 @@ public class ListingService {
             listing.setPrice(request.getPrice());
             listing.setRoomType(request.getRoomType());
             listing.setContactInfo(request.getContactInfo());
-            return toResponse(listingRepository.save(listing));
+            Listing saved = listingRepository.save(listing);
+
+            eventPublisher.publishEvent(new DomainEvent("listing.updated", landlordEmail, "LANDLORD",
+                    "Listing", saved.getId(), "Listing '" + saved.getTitle() + "' updated"));
+            return toResponse(saved);
         } catch (Exception e) {
             logger.error("Unexpected error while updating listing with id {}: {}", id, e.getMessage());
             throw e;
@@ -148,7 +164,11 @@ public class ListingService {
         try {
             Listing listing = findOwnedListing(id, landlordEmail);
             listing.setStatus(status);
-            return toResponse(listingRepository.save(listing));
+            Listing saved = listingRepository.save(listing);
+
+            eventPublisher.publishEvent(new DomainEvent("listing.status_changed", landlordEmail, "LANDLORD",
+                    "Listing", saved.getId(), "Status set to " + status));
+            return toResponse(saved);
         } catch (Exception e) {
             logger.error("Error while updating status of listing with id {}: {}", id, e.getMessage());
             throw e;
@@ -158,7 +178,11 @@ public class ListingService {
     public ListingImageResponseDto uploadImage(Long id, MultipartFile file, boolean isPrimary, String landlordEmail) {
         try {
             Listing listing = findOwnedListing(id, landlordEmail);
-            return listingImageService.saveImage(listing, file, isPrimary);
+            ListingImageResponseDto image = listingImageService.saveImage(listing, file, isPrimary);
+
+            eventPublisher.publishEvent(new DomainEvent("listing.image_uploaded", landlordEmail, "LANDLORD",
+                    "Listing", id, "Image " + image.getId() + " uploaded" + (isPrimary ? " as primary" : "")));
+            return image;
         } catch (Exception e) {
             logger.error("Error while uploading image for listing with id {}: {}", id, e.getMessage());
             throw e;
@@ -169,6 +193,9 @@ public class ListingService {
         try {
             findOwnedListing(id, landlordEmail);
             listingImageService.deleteImage(id, imageId);
+
+            eventPublisher.publishEvent(new DomainEvent("listing.image_deleted", landlordEmail, "LANDLORD",
+                    "Listing", id, "Image " + imageId + " deleted"));
         } catch (Exception e) {
             logger.error("Error while deleting image {} of listing with id {}: {}", imageId, id, e.getMessage());
             throw e;
@@ -196,11 +223,21 @@ public class ListingService {
                 throw new ListingHasActiveBookingsException();
             }
 
+            // payments are money records and must never be deleted, and they point at the bookings
+            // deleted below, so a listing that has any payment (even a failed one) must stay
+            if (paymentRepository.existsForListing(id)) {
+                throw new ListingHasPaymentsException();
+            }
+
             // bookings and images point at the listing, so they must be removed first.
             // Only cancelled or vacated bookings can be left at this point.
             bookingRepository.deleteByListingId(id);
             listingImageService.deleteAllImages(id);
             listingRepository.delete(listing);
+
+            // this method is @Transactional, so the event is only sent once the delete has committed
+            eventPublisher.publishEvent(new DomainEvent("listing.deleted", userEmail, isAdmin ? "ADMIN" : "LANDLORD",
+                    "Listing", id, "Listing '" + listing.getTitle() + "' deleted"));
         } catch (Exception e) {
             logger.error("Unexpected error while deleting listing with id {}: {}", id, e.getMessage());
             throw e;

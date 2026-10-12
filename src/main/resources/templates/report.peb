@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+{# Printable report page, shared by the landlord and admin reports. Filled by ReportViewService.
+   Only counts and sums are shown: no names, emails, phone numbers, national IDs or listing titles.
+   Every {{ }} value is escaped automatically, never use the raw filter. #}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <style>
+        body { font-family: Arial, Helvetica, sans-serif; color: #222; margin: 24px; font-size: 14px; }
+        header { border-bottom: 2px solid #2b5797; padding-bottom: 8px; margin-bottom: 8px; }
+        .project { margin: 0; color: #2b5797; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+        h1 { margin: 4px 0; font-size: 22px; }
+        .generated { margin: 0; color: #666; font-size: 12px; }
+        h2 { margin: 20px 0 8px; font-size: 16px; color: #2b5797; }
+        table { border-collapse: collapse; width: 100%; max-width: 640px; }
+        th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+        th { background: #eef2f8; }
+        .num { text-align: right; }
+        .filters td { border: none; padding: 2px 16px 2px 0; }
+        .filters td:first-child { color: #666; }
+        .note, .empty { color: #666; font-size: 12px; }
+        .empty { font-style: italic; }
+        .income { font-size: 18px; font-weight: bold; margin: 0; }
+
+        /* printing (Ctrl+P, or Save as PDF): fit an A4 page and never cut a table row in half */
+        @media print {
+            @page { size: A4; margin: 15mm; }
+            body { margin: 0; font-size: 12px; }
+            table { max-width: 100%; }
+            tr { break-inside: avoid; page-break-inside: avoid; }
+            thead { display: table-header-group; }
+            h2 { break-after: avoid; page-break-after: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <p class="project">Student Accommodation Finder</p>
+    <h1>{{ title }}</h1>
+    <p class="generated">Generated {{ generatedAt }} (Africa/Nairobi time)</p>
+</header>
+
+<h2>Filters</h2>
+<table class="filters">
+    <tr><td>From</td><td>{{ report.from }}</td></tr>
+    <tr><td>To</td><td>{{ report.to }}</td></tr>
+    <tr><td>Group by</td><td>{{ report.groupBy }}</td></tr>
+    <tr><td>Sort</td><td>{{ sort }}</td></tr>
+    <tr><td>Booking status</td><td>{{ bookingStatus | default("All") }}</td></tr>
+    <tr><td>Payment status</td><td>{{ paymentStatus | default("All") }}</td></tr>
+</table>
+
+{% if showListings %}
+<h2>Listings</h2>
+<table>
+    <thead><tr><th class="num">Total</th><th class="num">Available</th><th class="num">Occupied</th></tr></thead>
+    <tbody>
+    <tr>
+        <td class="num">{{ report.listings.total }}</td>
+        <td class="num">{{ report.listings.available }}</td>
+        <td class="num">{{ report.listings.occupied }}</td>
+    </tr>
+    </tbody>
+</table>
+<p class="note">Listings right now, not filtered by date.</p>
+{% endif %}
+
+{% if showBookings %}
+<h2>Bookings</h2>
+{% if report.bookings is empty %}
+<p class="empty">No data for these filters</p>
+{% else %}
+<table>
+    <thead><tr><th>Group</th><th class="num">Count</th></tr></thead>
+    <tbody>
+    {% for row in report.bookings %}
+    <tr><td>{{ row.group }}</td><td class="num">{{ row.count }}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endif %}
+
+{% if showPayments %}
+<h2>Payments</h2>
+{% if report.payments is empty %}
+<p class="empty">No data for these filters</p>
+{% else %}
+<table>
+    <thead><tr><th>Group</th><th class="num">Count</th><th class="num">Total</th></tr></thead>
+    <tbody>
+    {% for row in report.payments %}
+    <tr>
+        <td>{{ row.group }}</td>
+        <td class="num">{{ row.count }}</td>
+        <td class="num">KES {{ row.totalAmount | numberformat("#,##0.00") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endif %}
+
+{% if showIncome %}
+<h2>Income</h2>
+<p class="income">KES {{ report.income | numberformat("#,##0.00") }}</p>
+<p class="note">The sum of PAID payments in the date range.</p>
+{% endif %}
+
+</body>
+</html>

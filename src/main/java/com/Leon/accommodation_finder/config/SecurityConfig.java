@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.authentication.ProviderManager;
@@ -15,6 +16,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
@@ -51,7 +53,7 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // registering and logging in must work without a token
+                        // registering, logging in, refresh and logout must work without an access token
                         .requestMatchers("/api/auth/**").permitAll()
                         // Swagger's own page and the generated API description
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
@@ -61,8 +63,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/listings/**").permitAll()
                         // listing photos must open in a browser or <img> tag without a token
                         .requestMatchers(HttpMethod.GET, "/uploads/listings/**").permitAll()
+                        // Safaricom calls the M-Pesa callback without a token
+                        .requestMatchers(HttpMethod.POST, "/api/payments/callback").permitAll()
                         // everything else needs a valid token
                         .anyRequest().authenticated())
+                // a missing, expired or refresh token gives 401 (Spring's default would be 403)
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

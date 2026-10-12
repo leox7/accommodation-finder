@@ -1,54 +1,47 @@
 package com.Leon.accommodation_finder.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.time.Duration;
 
 @Service
 public class OtpService {
 
-    private static final long OTP_VALID_MILLIS = 5 * 60 * 1000; // 5 minutes
+    private static final String KEY_PREFIX = "otp:";
     private static final SecureRandom random = new SecureRandom();
 
-    // Keyed by email, holds the current code and when it stops being valid.
-    // ConcurrentHashMap because more than one login request could touch this
-    // map at the same time, a plain HashMap is not safe for that.
-    private final Map<String, OtpEntry> otpStore = new ConcurrentHashMap<>();
+    // Redis holds one key per email, for example otp:jane@students.kcau.ac.ke -> 123456.
+    // Because Redis lives outside the app, the codes survive an app restart.
+    private final StringRedisTemplate redisTemplate;
+
+    @Value("${otp.expiry-minutes}")
+    private long otpExpiryMinutes;
+
+    @Autowired
+    public OtpService(StringRedisTemplate redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
 
     public String generateOtp(String email) {
         String otp = String.format("%06d", random.nextInt(1_000_000));
-        long expiresAt = System.currentTimeMillis() + OTP_VALID_MILLIS;
-        otpStore.put(email, new OtpEntry(otp, expiresAt));
+        // the expiry (TTL) makes Redis delete the key by itself when time runs out,
+        // and saving again for the same email replaces any older code
+        redisTemplate.opsForValue().set(KEY_PREFIX + email, otp, Duration.ofMinutes(otpExpiryMinutes));
         return otp;
     }
 
     public boolean isValid(String email, String otp) {
-        OtpEntry entry = otpStore.get(email);
-
-        if (entry == null) {
-            return false;
-        }
-        if (System.currentTimeMillis() > entry.expiresAt) {
-            otpStore.remove(email);
-            return false;
-        }
-        return entry.otp.equals(otp);
+        // null means there was never a code, or it already expired or was used
+        String storedOtp = redisTemplate.opsForValue().get(KEY_PREFIX + email);
+        return storedOtp != null && storedOtp.equals(otp);
     }
 
     // Called once an OTP has been used successfully, so it cannot be reused.
     public void clearOtp(String email) {
-        otpStore.remove(email);
-    }
-
-    private static class OtpEntry {
-        private final String otp;
-        private final long expiresAt;
-
-        private OtpEntry(String otp, long expiresAt) {
-            this.otp = otp;
-            this.expiresAt = expiresAt;
-        }
+        redisTemplate.delete(KEY_PREFIX + email);
     }
 }

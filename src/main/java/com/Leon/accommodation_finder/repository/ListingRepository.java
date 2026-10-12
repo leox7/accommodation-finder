@@ -31,4 +31,13 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
 
     @Query("SELECT l FROM Listing l WHERE LOWER(l.landlord.email) = LOWER(:email)")
     Page<Listing> findMyListings(@Param("email") String email, Pageable pageable);
+
+    // ---- report counts. A null status means "all statuses" ----
+
+    @Query("SELECT COUNT(l) FROM Listing l WHERE l.landlord.email = :email " +
+            "AND (:status IS NULL OR l.status = :status)")
+    long countLandlordListings(@Param("email") String email, @Param("status") ListingStatus status);
+
+    @Query("SELECT COUNT(l) FROM Listing l WHERE (:status IS NULL OR l.status = :status)")
+    long countAllListings(@Param("status") ListingStatus status);
 }
