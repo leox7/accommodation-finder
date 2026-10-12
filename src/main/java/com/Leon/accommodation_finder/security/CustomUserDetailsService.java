@@ -27,6 +27,8 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .username(user.getEmail())
                 .password(user.getPassword())
                 .authorities("ROLE_" + user.getRole().name())
+                // a deactivated account is refused by Spring before the password is even checked
+                .disabled(!user.isEnabled())
                 .build();
     }
 }

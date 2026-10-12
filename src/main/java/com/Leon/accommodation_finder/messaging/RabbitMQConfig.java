@@ -62,6 +62,11 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(notificationQueue()).to(eventsExchange()).with("payment.paid");
     }
 
+    @Bean
+    public Binding rentDueBinding() {
+        return BindingBuilder.bind(notificationQueue()).to(eventsExchange()).with("rent.due");
+    }
+
     // events travel as JSON instead of Java's own binary format, so they are readable on the RabbitMQ page
     @Bean
     public MessageConverter messageConverter() {

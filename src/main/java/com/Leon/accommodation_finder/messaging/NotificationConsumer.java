@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-// Reads booking.created, booking.confirmed and payment.paid from the notification queue.
+// Reads booking.created, booking.confirmed, payment.paid and rent.due from the notification queue.
 // The recipient is always looked up in the database from the event's entityId,
 // events never carry recipient emails or phone numbers.
 @Component
@@ -66,6 +66,8 @@ public class NotificationConsumer {
                 notifyLandlordOfNewBooking(event, booking.get());
             } else if ("booking.confirmed".equals(event.getEventType())) {
                 emailStudentBookingConfirmed(booking.get());
+            } else if ("rent.due".equals(event.getEventType())) {
+                notifyLandlordOfRentDue(event, booking.get());
             }
         } catch (Exception e) {
             logger.error("Error while handling notification for event {}: {}", event.getEventId(), e.getMessage());
@@ -136,6 +138,37 @@ public class NotificationConsumer {
             emailService.sendEmail(landlord.getEmail(), "Payment received", message);
         } catch (Exception e) {
             logger.error("Could not email the landlord about payment {}: {}", payment.getId(), e.getMessage());
+        }
+    }
+
+    // Tells the landlord that rent on their listing is due and unpaid.
+    // No phone numbers and no student contact details. The student gets no email.
+    private void notifyLandlordOfRentDue(DomainEvent event, Booking booking) {
+        // RabbitMQ may deliver the same message twice, the first copy is enough
+        if (notificationRepository.existsByEventId(event.getEventId())) {
+            logger.info("Notification for event {} already exists, skipping", event.getEventId());
+            return;
+        }
+
+        Landlord landlord = booking.getListing().getLandlord();
+        // the due date that was reminded about, saved on the booking together with the event
+        String message = "Rent for your listing '" + booking.getListing().getTitle()
+                + "' was due on " + booking.getLastRemindedDueDate() + " and has not been paid yet.";
+
+        Notification notification = new Notification();
+        notification.setLandlord(landlord);
+        notification.setMessage(message);
+        notification.setType(NotificationType.RENT_DUE);
+        notification.setRead(false);
+        notification.setEventId(event.getEventId());
+        notification.setDateCreated(LocalDateTime.now());
+        notificationRepository.save(notification);
+
+        // the notification row is already saved, a failed email is only logged
+        try {
+            emailService.sendEmail(landlord.getEmail(), "Rent due", message);
+        } catch (Exception e) {
+            logger.error("Could not email the landlord about rent due on booking {}: {}", booking.getId(), e.getMessage());
         }
     }
 

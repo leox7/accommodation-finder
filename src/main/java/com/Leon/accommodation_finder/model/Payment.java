@@ -54,5 +54,8 @@ public class Payment {
     @Column(nullable = false, columnDefinition = "int default 0")
     private int statusChecks;
 
+    // when the last STK Push Query ran, empty until the first one. UNKNOWN payments are asked again 10 minutes after it
+    private LocalDateTime lastCheckedAt;
+
     private LocalDateTime dateCreated;
 }

@@ -1,5 +1,6 @@
 package com.Leon.accommodation_finder.service;
 
+import com.Leon.accommodation_finder.dto.AdminBookingResponseDto;
 import com.Leon.accommodation_finder.dto.BookingRequestDto;
 import com.Leon.accommodation_finder.dto.BookingResponseDto;
 import com.Leon.accommodation_finder.dto.PagedResponse;
@@ -157,6 +158,17 @@ public class BookingService {
         }
     }
 
+    // every booking in the system, for the admin list. status is optional
+    public PagedResponse<AdminBookingResponseDto> getAllBookings(BookingStatus status, int page, int size) {
+        try {
+            Page<Booking> bookings = bookingRepository.findAllBookings(status, buildPageable(page, size));
+            return PagedResponse.from(bookings.map(this::toAdminResponse));
+        } catch (Exception e) {
+            logger.error("Error while fetching all bookings for an admin: {}", e.getMessage());
+            throw e;
+        }
+    }
+
     // Transactional because the booking, the listing and the other pending bookings change together
     @Transactional
     public BookingResponseDto confirmBooking(Long id, String landlordEmail) {
@@ -259,6 +271,24 @@ public class BookingService {
         response.setListingTitle(booking.getListing().getTitle());
         response.setListingLocation(booking.getListing().getLocation());
         response.setStudentFirstName(booking.getStudent().getFirstName());
+        response.setStartDate(booking.getStartDate());
+        response.setEndDate(booking.getEndDate());
+        response.setStatus(booking.getStatus());
+        response.setDateCreated(booking.getDateCreated());
+        return response;
+    }
+
+    // the same as toResponse, plus the student's last name and email so an admin can see who booked.
+    // Never the student's phone number or any ID number
+    private AdminBookingResponseDto toAdminResponse(Booking booking) {
+        AdminBookingResponseDto response = new AdminBookingResponseDto();
+        response.setId(booking.getId());
+        response.setListingId(booking.getListing().getId());
+        response.setListingTitle(booking.getListing().getTitle());
+        response.setListingLocation(booking.getListing().getLocation());
+        response.setStudentFirstName(booking.getStudent().getFirstName());
+        response.setStudentLastName(booking.getStudent().getLastName());
+        response.setStudentEmail(booking.getStudent().getEmail());
         response.setStartDate(booking.getStartDate());
         response.setEndDate(booking.getEndDate());
         response.setStatus(booking.getStatus());

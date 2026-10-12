@@ -43,4 +43,8 @@ public class Booking {
     // the day the next month's rent is due. Empty until the deposit is paid, then set to startDate,
     // and moved forward one month by each paid rent. Once it is after endDate there is nothing more to pay
     private LocalDate nextDueDate;
+
+    // the due date the landlord was last reminded about, so the daily job never reminds twice
+    // for the same due date. Empty until the first rent due reminder
+    private LocalDate lastRemindedDueDate;
 }

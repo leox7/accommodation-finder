@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -44,6 +45,10 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query("SELECT b FROM Booking b WHERE LOWER(b.student.email) = LOWER(:email)")
     Page<Booking> findMyBookings(@Param("email") String email, Pageable pageable);
 
+    // every booking, for admins. A null status means "all statuses"
+    @Query("SELECT b FROM Booking b WHERE (:status IS NULL OR b.status = :status)")
+    Page<Booking> findAllBookings(@Param("status") BookingStatus status, Pageable pageable);
+
     // bookings on every listing owned by the given landlord
     @Query("SELECT b FROM Booking b WHERE LOWER(b.listing.landlord.email) = LOWER(:email)")
     Page<Booking> findLandlordBookings(@Param("email") String email, Pageable pageable);
@@ -74,4 +79,55 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     // used after vacating: true if the listing still has another booking with the given status
     boolean existsByListingIdAndStatusAndIdNot(Long listingId, BookingStatus status, Long id);
+
+    // Confirmed bookings whose rent is due today or earlier and still unpaid (paying moves nextDueDate forward),
+    // that are still inside the stay, and whose current due date has not been reminded about yet
+    @Query("SELECT b FROM Booking b " +
+            "WHERE b.status = com.Leon.accommodation_finder.model.BookingStatus.CONFIRMED " +
+            "AND b.nextDueDate IS NOT NULL " +
+            "AND b.nextDueDate <= :today " +
+            "AND b.nextDueDate <= b.endDate " +
+            "AND (b.lastRemindedDueDate IS NULL OR b.lastRemindedDueDate < b.nextDueDate)")
+    List<Booking> findBookingsDueForReminder(@Param("today") LocalDate today);
+
+    // ---- report queries: bookings created from :from (included) to :to (not included).
+    // A null status means "all statuses". A STATUS row is [status, count], a MONTH row is [year, month, count].
+    // The landlord versions only count bookings on that landlord's own listings. ----
+
+    @Query("SELECT b.status, COUNT(b) FROM Booking b WHERE b.listing.landlord.email = :email " +
+            "AND b.dateCreated >= :from AND b.dateCreated < :to " +
+            "AND (:status IS NULL OR b.status = :status) " +
+            "GROUP BY b.status ORDER BY b.status")
+    List<Object[]> countLandlordBookingsByStatus(@Param("email") String email,
+                                                 @Param("from") LocalDateTime from,
+                                                 @Param("to") LocalDateTime to,
+                                                 @Param("status") BookingStatus status);
+
+    @Query("SELECT YEAR(b.dateCreated), MONTH(b.dateCreated), COUNT(b) FROM Booking b " +
+            "WHERE b.listing.landlord.email = :email " +
+            "AND b.dateCreated >= :from AND b.dateCreated < :to " +
+            "AND (:status IS NULL OR b.status = :status) " +
+            "GROUP BY YEAR(b.dateCreated), MONTH(b.dateCreated) " +
+            "ORDER BY YEAR(b.dateCreated), MONTH(b.dateCreated)")
+    List<Object[]> countLandlordBookingsByMonth(@Param("email") String email,
+                                                @Param("from") LocalDateTime from,
+                                                @Param("to") LocalDateTime to,
+                                                @Param("status") BookingStatus status);
+
+    @Query("SELECT b.status, COUNT(b) FROM Booking b " +
+            "WHERE b.dateCreated >= :from AND b.dateCreated < :to " +
+            "AND (:status IS NULL OR b.status = :status) " +
+            "GROUP BY b.status ORDER BY b.status")
+    List<Object[]> countAllBookingsByStatus(@Param("from") LocalDateTime from,
+                                            @Param("to") LocalDateTime to,
+                                            @Param("status") BookingStatus status);
+
+    @Query("SELECT YEAR(b.dateCreated), MONTH(b.dateCreated), COUNT(b) FROM Booking b " +
+            "WHERE b.dateCreated >= :from AND b.dateCreated < :to " +
+            "AND (:status IS NULL OR b.status = :status) " +
+            "GROUP BY YEAR(b.dateCreated), MONTH(b.dateCreated) " +
+            "ORDER BY YEAR(b.dateCreated), MONTH(b.dateCreated)")
+    List<Object[]> countAllBookingsByMonth(@Param("from") LocalDateTime from,
+                                           @Param("to") LocalDateTime to,
+                                           @Param("status") BookingStatus status);
 }

@@ -11,6 +11,7 @@ import com.Leon.accommodation_finder.dto.VerifyOtpDto;
 import com.Leon.accommodation_finder.exception.EmailAlreadyExistsException;
 import com.Leon.accommodation_finder.exception.InvalidCredentialsException;
 import com.Leon.accommodation_finder.exception.InvalidOtpException;
+import com.Leon.accommodation_finder.exception.InvalidRefreshTokenException;
 import com.Leon.accommodation_finder.exception.InvalidStudentEmailException;
 import com.Leon.accommodation_finder.messaging.DomainEvent;
 import com.Leon.accommodation_finder.model.Landlord;
@@ -26,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -143,6 +145,12 @@ public class AuthService {
             try {
                 authenticationManager.authenticate(
                         new UsernamePasswordAuthenticationToken(email, dto.getPassword()));
+            } catch (DisabledException disabledEx) {
+                // the audit row may say why, but the client gets exactly the same answer as a
+                // wrong password, so nobody can find out that this account exists and was deactivated
+                eventPublisher.publishEvent(new DomainEvent("auth.login_failed", email, null,
+                        "User", null, "Account deactivated"));
+                throw new InvalidCredentialsException();
             } catch (AuthenticationException authEx) {
                 eventPublisher.publishEvent(new DomainEvent("auth.login_failed", email, null,
                         "User", null, "Wrong email or password"));
@@ -184,6 +192,14 @@ public class AuthService {
             User user = userRepository.findByEmail(email)
                     .orElseThrow(InvalidCredentialsException::new);
 
+            // an OTP requested before the account was deactivated must not still give tokens.
+            // The answer looks exactly like a wrong or expired OTP
+            if (!user.isEnabled()) {
+                eventPublisher.publishEvent(new DomainEvent("auth.otp_failed", email, user.getRole().name(),
+                        "User", user.getId(), "Account deactivated"));
+                throw new InvalidOtpException();
+            }
+
             LoginResponseDto response = new LoginResponseDto();
             response.setId(user.getId());
             response.setFirstName(user.getFirstName());
@@ -210,6 +226,11 @@ public class AuthService {
     public LoginResponseDto refreshToken(RefreshTokenDto dto) {
         try {
             User user = refreshTokenService.useRefreshToken(dto.getRefreshToken());
+
+            // a second check on top of the revoked tokens: a deactivated user never gets new tokens
+            if (!user.isEnabled()) {
+                throw new InvalidRefreshTokenException();
+            }
 
             LoginResponseDto response = new LoginResponseDto();
             response.setId(user.getId());
