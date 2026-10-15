@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 // What the API returns for a listing. Only the landlord's first name is shown,
@@ -27,4 +28,6 @@ public class ListingResponseDto {
     // null when the listing has no primary image yet
     private String primaryImageUrl;
     private List<String> secondaryImageUrls;
+    // when the listing was posted, null for listings created before this field existed
+    private LocalDateTime createdAt;
 }

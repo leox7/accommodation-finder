@@ -107,6 +107,7 @@ public class AdminService {
                 dto.setLastName(user.getLastName());
                 dto.setEmail(user.getEmail());
                 dto.setRole(user.getRole());
+                dto.setCreatedAt(user.getDateCreated());
                 if (user instanceof Landlord landlord) {
                     dto.setNationalIdNumber(MaskingUtil.maskNationalId(landlord.getNationalIdNumber()));
                 }
@@ -218,6 +219,7 @@ public class AdminService {
         response.setLastName(user.getLastName());
         response.setEmail(user.getEmail());
         response.setRole(user.getRole());
+        response.setCreatedAt(user.getDateCreated());
         return response;
     }
 

@@ -10,6 +10,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 @Repository
 public interface ListingRepository extends JpaRepository<Listing, Long> {
     boolean existsByTitleIgnoreCase(String title);
@@ -31,6 +34,14 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
 
     @Query("SELECT l FROM Listing l WHERE LOWER(l.landlord.email) = LOWER(:email)")
     Page<Listing> findMyListings(@Param("email") String email, Pageable pageable);
+
+    // home page numbers: one row per room type that has available listings, [roomType, count, lowest price]
+    @Query("SELECT l.roomType, COUNT(l), MIN(l.price) FROM Listing l " +
+            "WHERE l.status = com.Leon.accommodation_finder.model.ListingStatus.AVAILABLE GROUP BY l.roomType")
+    List<Object[]> summarizeAvailableByRoomType();
+
+    // listings posted on or after the given time (listings from before dateCreated existed are not counted)
+    long countByDateCreatedGreaterThanEqual(LocalDateTime since);
 
     // ---- report counts. A null status means "all statuses" ----
 
