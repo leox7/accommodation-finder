@@ -5,6 +5,7 @@ import com.Leon.accommodation_finder.dto.LoginDto;
 import com.Leon.accommodation_finder.dto.LoginResponseDto;
 import com.Leon.accommodation_finder.dto.OtpResponseDto;
 import com.Leon.accommodation_finder.dto.RefreshTokenDto;
+import com.Leon.accommodation_finder.dto.ResendOtpDto;
 import com.Leon.accommodation_finder.dto.StudentRegisterDto;
 import com.Leon.accommodation_finder.dto.UserResponseDto;
 import com.Leon.accommodation_finder.dto.VerifyOtpDto;
@@ -13,6 +14,7 @@ import com.Leon.accommodation_finder.exception.InvalidCredentialsException;
 import com.Leon.accommodation_finder.exception.InvalidOtpException;
 import com.Leon.accommodation_finder.exception.InvalidRefreshTokenException;
 import com.Leon.accommodation_finder.exception.InvalidStudentEmailException;
+import com.Leon.accommodation_finder.exception.TooManyRequestsException;
 import com.Leon.accommodation_finder.messaging.DomainEvent;
 import com.Leon.accommodation_finder.model.Landlord;
 import com.Leon.accommodation_finder.model.Role;
@@ -220,6 +222,45 @@ public class AuthService {
         }
     }
 
+    // Sends a new login code, but only if the password step was already passed (a code is waiting in Redis).
+    // The answer is the same whether or not the email exists, so this cannot be used to find accounts.
+    // The cooldown is started for EVERY email, known or not, so even the 429 gives nothing away.
+    // Like login, this has no @Transactional so its event is sent straight away.
+    public OtpResponseDto resendOtp(ResendOtpDto dto) {
+        try {
+            String email = dto.getEmail().trim().toLowerCase();
+
+            if (!otpService.startResendCooldown(email)) {
+                throw new TooManyRequestsException(
+                        "Please wait before asking for another code", otpService.resendCooldownSecondsLeft(email));
+            }
+
+            User user = userRepository.findByEmail(email).orElse(null);
+            if (user != null && user.isEnabled() && otpService.hasPendingOtp(email)) {
+                // the new code replaces the old one and is valid for 5 minutes
+                String otp = otpService.generateOtp(email);
+                try {
+                    emailService.sendEmail(email, "Your Accommodation Finder login code",
+                            "Your new one time login code is " + otp + ". It expires in 5 minutes.");
+                } catch (Exception emailError) {
+                    // a failed email must not change the answer, or the failure would show the account exists
+                    logger.error("Could not email the resent OTP: {}", emailError.getMessage());
+                }
+                // never put the OTP in an event
+                eventPublisher.publishEvent(new DomainEvent("auth.otp_resent", email, user.getRole().name(),
+                        "User", user.getId(), "New OTP emailed"));
+            }
+
+            OtpResponseDto response = new OtpResponseDto();
+            response.setEmail(email);
+            response.setMessage("If a login is waiting for this email, a new code has been sent");
+            return response;
+        } catch (Exception e) {
+            logger.error("Error while resending OTP for email '{}': {}", dto.getEmail(), e.getMessage());
+            throw e;
+        }
+    }
+
     // Uses a valid refresh token to issue a new access token, without needing
     // the password or OTP again. The used refresh token is revoked and a new one
     // is returned (rotation), so each refresh token works only once.
@@ -264,6 +305,7 @@ public class AuthService {
         response.setLastName(user.getLastName());
         response.setEmail(user.getEmail());
         response.setRole(user.getRole());
+        response.setCreatedAt(user.getDateCreated());
         response.setMessage(message);
         return response;
     }

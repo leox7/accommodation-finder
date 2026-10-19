@@ -1,12 +1,14 @@
 package com.Leon.accommodation_finder.messaging;
 
 import com.Leon.accommodation_finder.model.Booking;
+import com.Leon.accommodation_finder.model.Inquiry;
 import com.Leon.accommodation_finder.model.Landlord;
 import com.Leon.accommodation_finder.model.Listing;
 import com.Leon.accommodation_finder.model.Notification;
 import com.Leon.accommodation_finder.model.NotificationType;
 import com.Leon.accommodation_finder.model.Payment;
 import com.Leon.accommodation_finder.repository.BookingRepository;
+import com.Leon.accommodation_finder.repository.InquiryRepository;
 import com.Leon.accommodation_finder.repository.NotificationRepository;
 import com.Leon.accommodation_finder.repository.PaymentRepository;
 import com.Leon.accommodation_finder.service.EmailService;
@@ -14,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -30,16 +33,22 @@ public class NotificationConsumer {
     private final BookingRepository bookingRepository;
     private final NotificationRepository notificationRepository;
     private final PaymentRepository paymentRepository;
+    private final InquiryRepository inquiryRepository;
     private final EmailService emailService;
+
+    @Value("${inquiry.support-email}")
+    private String supportEmail;
 
     @Autowired
     public NotificationConsumer(BookingRepository bookingRepository,
                                 NotificationRepository notificationRepository,
                                 PaymentRepository paymentRepository,
+                                InquiryRepository inquiryRepository,
                                 EmailService emailService) {
         this.bookingRepository = bookingRepository;
         this.notificationRepository = notificationRepository;
         this.paymentRepository = paymentRepository;
+        this.inquiryRepository = inquiryRepository;
         this.emailService = emailService;
     }
 
@@ -51,6 +60,11 @@ public class NotificationConsumer {
             // a payment event's entityId is a payment id, not a booking id, so it is handled on its own
             if ("payment.paid".equals(event.getEventType())) {
                 notifyLandlordOfPayment(event);
+                return;
+            }
+            // the same for an inquiry: its entityId is an inquiry id
+            if ("inquiry.created".equals(event.getEventType())) {
+                emailSupportAboutInquiry(event);
                 return;
             }
 
@@ -169,6 +183,39 @@ public class NotificationConsumer {
             emailService.sendEmail(landlord.getEmail(), "Rent due", message);
         } catch (Exception e) {
             logger.error("Could not email the landlord about rent due on booking {}: {}", booking.getId(), e.getMessage());
+        }
+    }
+
+    // Emails the support address when someone sends the contact form. The text is read from the database,
+    // it is never in the event. The subject line is fixed text, so what a visitor types cannot change the email headers.
+    private void emailSupportAboutInquiry(DomainEvent event) {
+        Optional<Inquiry> found = inquiryRepository.findById(event.getEntityId());
+        if (found.isEmpty()) {
+            logger.warn("Inquiry {} from event {} no longer exists, no email sent",
+                    event.getEntityId(), event.getEventId());
+            return;
+        }
+
+        Inquiry inquiry = found.get();
+        // RabbitMQ may deliver the same message twice, the first copy is enough
+        if (inquiry.isSupportNotified()) {
+            logger.info("Support was already emailed about inquiry {}, skipping", inquiry.getId());
+            return;
+        }
+
+        String body = "New message from the contact form.\n\n"
+                + "Name: " + inquiry.getFullName() + "\n"
+                + "Email: " + inquiry.getEmail() + "\n"
+                + "Subject: " + inquiry.getSubject().getLabel() + "\n\n"
+                + inquiry.getMessage();
+
+        try {
+            emailService.sendEmail(supportEmail, "QiotaKE contact form: " + inquiry.getSubject().getLabel(), body);
+            inquiry.setSupportNotified(true);
+            inquiryRepository.save(inquiry);
+        } catch (Exception e) {
+            // the inquiry is already saved, so a failed email is only logged
+            logger.error("Could not email support about inquiry {}: {}", inquiry.getId(), e.getMessage());
         }
     }
 

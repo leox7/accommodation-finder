@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,6 +19,8 @@ public class UserResponseDto {
     private String email;
     private Role role;
     private String message;
+    // when the account was created, shown as "Member since"
+    private LocalDateTime createdAt;
 
     // only filled in for landlords in the admin user list, always masked
     @JsonInclude(JsonInclude.Include.NON_NULL)

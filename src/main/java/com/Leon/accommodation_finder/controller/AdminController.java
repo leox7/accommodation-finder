@@ -3,7 +3,9 @@ package com.Leon.accommodation_finder.controller;
 import com.Leon.accommodation_finder.dto.AdminBookingResponseDto;
 import com.Leon.accommodation_finder.dto.AdminOverviewDto;
 import com.Leon.accommodation_finder.dto.AdminRegisterDto;
+import com.Leon.accommodation_finder.dto.AdminStatsDto;
 import com.Leon.accommodation_finder.dto.AuditLogResponseDto;
+import com.Leon.accommodation_finder.dto.InquiryResponseDto;
 import com.Leon.accommodation_finder.dto.PagedResponse;
 import com.Leon.accommodation_finder.dto.PaymentResponseDto;
 import com.Leon.accommodation_finder.dto.ReportResponseDto;
@@ -15,9 +17,11 @@ import com.Leon.accommodation_finder.model.ReportSection;
 import com.Leon.accommodation_finder.model.ReportSort;
 import com.Leon.accommodation_finder.service.AdminService;
 import com.Leon.accommodation_finder.service.BookingService;
+import com.Leon.accommodation_finder.service.InquiryService;
 import com.Leon.accommodation_finder.service.PaymentService;
 import com.Leon.accommodation_finder.service.ReportService;
 import com.Leon.accommodation_finder.service.ReportViewService;
+import com.Leon.accommodation_finder.service.StatsService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -46,16 +50,21 @@ public class AdminController {
     private final PaymentService paymentService;
     private final ReportService reportService;
     private final ReportViewService reportViewService;
+    private final StatsService statsService;
+    private final InquiryService inquiryService;
 
     @Autowired
     public AdminController(AdminService adminService, BookingService bookingService,
                            PaymentService paymentService, ReportService reportService,
-                           ReportViewService reportViewService) {
+                           ReportViewService reportViewService, StatsService statsService,
+                           InquiryService inquiryService) {
         this.adminService = adminService;
         this.bookingService = bookingService;
         this.paymentService = paymentService;
         this.reportService = reportService;
         this.reportViewService = reportViewService;
+        this.statsService = statsService;
+        this.inquiryService = inquiryService;
     }
 
     // counts of users, listings, bookings and payments, up to 60 seconds old (cached in Redis)
@@ -63,6 +72,22 @@ public class AdminController {
     @GetMapping("/overview")
     public AdminOverviewDto getOverview() {
         return adminService.getOverview();
+    }
+
+    // dashboard numbers: users, listings, pending bookings and money received this month and last month
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/stats")
+    public AdminStatsDto getStats() {
+        return statsService.getAdminStats();
+    }
+
+    // messages from the public contact form, newest first
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/inquiries")
+    public PagedResponse<InquiryResponseDto> getInquiries(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return inquiryService.getInquiries(page, size);
     }
 
     // system wide report data, the same options as /api/reports/landlord

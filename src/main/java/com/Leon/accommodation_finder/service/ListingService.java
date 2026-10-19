@@ -3,7 +3,9 @@ package com.Leon.accommodation_finder.service;
 import com.Leon.accommodation_finder.dto.ListingImageResponseDto;
 import com.Leon.accommodation_finder.dto.ListingRequestDto;
 import com.Leon.accommodation_finder.dto.ListingResponseDto;
+import com.Leon.accommodation_finder.dto.ListingSummaryDto;
 import com.Leon.accommodation_finder.dto.PagedResponse;
+import com.Leon.accommodation_finder.dto.RoomTypeSummaryDto;
 import com.Leon.accommodation_finder.exception.ListingNotFoundException;
 import com.Leon.accommodation_finder.exception.DuplicateListingTitleException;
 import com.Leon.accommodation_finder.exception.ListingOwnershipException;
@@ -33,7 +35,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ListingService {
@@ -74,6 +78,40 @@ public class ListingService {
             return PagedResponse.from(listings.map(this::toResponse));
         } catch (Exception e) {
             logger.error("Error while searching listings: {}", e.getMessage());
+            throw e;
+        }
+    }
+
+    // Numbers for the home page. Every room type gets a row, even when nothing is available for it.
+    public ListingSummaryDto getSummary() {
+        try {
+            // each row from the query is [roomType, count, lowest price]
+            Map<RoomType, Object[]> rowsByRoomType = new HashMap<>();
+            for (Object[] row : listingRepository.summarizeAvailableByRoomType()) {
+                rowsByRoomType.put((RoomType) row[0], row);
+            }
+
+            ListingSummaryDto summary = new ListingSummaryDto();
+            List<RoomTypeSummaryDto> roomTypes = new ArrayList<>();
+            long totalAvailable = 0;
+
+            for (RoomType roomType : RoomType.values()) {
+                RoomTypeSummaryDto item = new RoomTypeSummaryDto();
+                item.setRoomType(roomType);
+                Object[] row = rowsByRoomType.get(roomType);
+                if (row != null) {
+                    item.setAvailableCount((Long) row[1]);
+                    item.setLowestPrice((Double) row[2]);
+                    totalAvailable += item.getAvailableCount();
+                }
+                roomTypes.add(item);
+            }
+
+            summary.setTotalAvailable(totalAvailable);
+            summary.setRoomTypes(roomTypes);
+            return summary;
+        } catch (Exception e) {
+            logger.error("Error while building the listing summary: {}", e.getMessage());
             throw e;
         }
     }
@@ -273,6 +311,7 @@ public class ListingService {
         response.setRoomType(listing.getRoomType());
         response.setContactInfo(listing.getContactInfo());
         response.setStatus(listing.getStatus());
+        response.setCreatedAt(listing.getDateCreated());
         if (listing.getLandlord() != null) {
             response.setLandlordFirstName(listing.getLandlord().getFirstName());
         }

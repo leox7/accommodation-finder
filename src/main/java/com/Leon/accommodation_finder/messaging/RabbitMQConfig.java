@@ -67,6 +67,12 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(notificationQueue()).to(eventsExchange()).with("rent.due");
     }
 
+    // a contact form message is emailed to the support address
+    @Bean
+    public Binding inquiryCreatedBinding() {
+        return BindingBuilder.bind(notificationQueue()).to(eventsExchange()).with("inquiry.created");
+    }
+
     // events travel as JSON instead of Java's own binary format, so they are readable on the RabbitMQ page
     @Bean
     public MessageConverter messageConverter() {

@@ -49,6 +49,16 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query("SELECT b FROM Booking b WHERE (:status IS NULL OR b.status = :status)")
     Page<Booking> findAllBookings(@Param("status") BookingStatus status, Pageable pageable);
 
+    // ---- profile and dashboard counts, for one status ----
+
+    @Query("SELECT COUNT(b) FROM Booking b WHERE LOWER(b.student.email) = LOWER(:email) AND b.status = :status")
+    long countStudentBookingsWithStatus(@Param("email") String email, @Param("status") BookingStatus status);
+
+    @Query("SELECT COUNT(b) FROM Booking b WHERE LOWER(b.listing.landlord.email) = LOWER(:email) AND b.status = :status")
+    long countLandlordBookingsWithStatus(@Param("email") String email, @Param("status") BookingStatus status);
+
+    long countByStatus(BookingStatus status);
+
     // bookings on every listing owned by the given landlord
     @Query("SELECT b FROM Booking b WHERE LOWER(b.listing.landlord.email) = LOWER(:email)")
     Page<Booking> findLandlordBookings(@Param("email") String email, Pageable pageable);

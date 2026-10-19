@@ -6,6 +6,8 @@ import lombok.Setter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Getter
 @Setter
@@ -43,4 +45,8 @@ public class Listing {
     @ManyToOne
     @JoinColumn(name = "landlord_id")
     private Landlord landlord;
+
+    // set automatically when the listing is created, shown as "Listed 2 days ago".
+    // Listings that existed before this column was added have no value (null)
+    private LocalDateTime dateCreated = LocalDateTime.now();
 }

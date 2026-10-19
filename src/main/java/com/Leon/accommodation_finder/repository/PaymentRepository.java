@@ -149,6 +149,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     BigDecimal sumAllIncome(@Param("from") LocalDateTime from,
                             @Param("to") LocalDateTime to);
 
+    // how many payments this student has completed
+    @Query("SELECT COUNT(p) FROM Payment p WHERE LOWER(p.booking.student.email) = LOWER(:email) " +
+            "AND p.status = com.Leon.accommodation_finder.model.PaymentStatus.PAID")
+    long countStudentPaidPayments(@Param("email") String email);
+
     @Query("SELECT p FROM Payment p WHERE LOWER(p.booking.student.email) = LOWER(:email)")
     Page<Payment> findStudentPayments(@Param("email") String email, Pageable pageable);
 

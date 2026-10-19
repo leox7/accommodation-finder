@@ -5,6 +5,7 @@ import com.Leon.accommodation_finder.dto.LoginDto;
 import com.Leon.accommodation_finder.dto.LoginResponseDto;
 import com.Leon.accommodation_finder.dto.OtpResponseDto;
 import com.Leon.accommodation_finder.dto.RefreshTokenDto;
+import com.Leon.accommodation_finder.dto.ResendOtpDto;
 import com.Leon.accommodation_finder.dto.StudentRegisterDto;
 import com.Leon.accommodation_finder.dto.UserResponseDto;
 import com.Leon.accommodation_finder.dto.VerifyOtpDto;
@@ -46,6 +47,12 @@ public class AuthController {
     @PostMapping("/verify-otp")
     public LoginResponseDto verifyOtp(@Valid @RequestBody VerifyOtpDto dto) {
         return authService.verifyOtp(dto);
+    }
+
+    // same answer for every email, and 429 with Retry-After if asked again within 60 seconds
+    @PostMapping("/resend-otp")
+    public OtpResponseDto resendOtp(@Valid @RequestBody ResendOtpDto dto) {
+        return authService.resendOtp(dto);
     }
 
     @PostMapping("/refresh")

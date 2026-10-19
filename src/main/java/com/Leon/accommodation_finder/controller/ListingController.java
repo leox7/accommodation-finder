@@ -4,6 +4,7 @@ import com.Leon.accommodation_finder.dto.ListingImageResponseDto;
 import com.Leon.accommodation_finder.dto.ListingRequestDto;
 import com.Leon.accommodation_finder.dto.ListingResponseDto;
 import com.Leon.accommodation_finder.dto.ListingStatusRequestDto;
+import com.Leon.accommodation_finder.dto.ListingSummaryDto;
 import com.Leon.accommodation_finder.dto.PagedResponse;
 import com.Leon.accommodation_finder.model.ListingStatus;
 import com.Leon.accommodation_finder.model.RoomType;
@@ -41,6 +42,12 @@ public class ListingController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return listingService.searchListings(keyword, roomType, status, minPrice, maxPrice, page, size);
+    }
+
+    // public numbers for the home page: total available, and per room type the count and lowest price
+    @GetMapping("/summary")
+    public ListingSummaryDto getSummary() {
+        return listingService.getSummary();
     }
 
     @PreAuthorize("hasRole('LANDLORD')")
