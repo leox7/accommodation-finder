@@ -22,6 +22,7 @@ import com.Leon.accommodation_finder.repository.BookingRepository;
 import com.Leon.accommodation_finder.repository.LandlordRepository;
 import com.Leon.accommodation_finder.repository.ListingRepository;
 import com.Leon.accommodation_finder.repository.PaymentRepository;
+import com.Leon.accommodation_finder.repository.ReviewRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,17 +52,20 @@ public class ListingService {
     private final ListingImageService listingImageService;
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
+    private final ReviewRepository reviewRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public ListingService(ListingRepository listingRepository, LandlordRepository landlordRepository,
                           ListingImageService listingImageService, BookingRepository bookingRepository,
-                          PaymentRepository paymentRepository, ApplicationEventPublisher eventPublisher) {
+                          PaymentRepository paymentRepository, ReviewRepository reviewRepository,
+                          ApplicationEventPublisher eventPublisher) {
         this.listingRepository = listingRepository;
         this.landlordRepository = landlordRepository;
         this.listingImageService = listingImageService;
         this.bookingRepository = bookingRepository;
         this.paymentRepository = paymentRepository;
+        this.reviewRepository = reviewRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -267,8 +271,9 @@ public class ListingService {
                 throw new ListingHasPaymentsException();
             }
 
-            // bookings and images point at the listing, so they must be removed first.
+            // reviews, bookings and images point at the listing, so they must be removed first.
             // Only cancelled or vacated bookings can be left at this point.
+            reviewRepository.deleteByListingId(id);
             bookingRepository.deleteByListingId(id);
             listingImageService.deleteAllImages(id);
             listingRepository.delete(listing);
@@ -312,6 +317,14 @@ public class ListingService {
         response.setContactInfo(listing.getContactInfo());
         response.setStatus(listing.getStatus());
         response.setCreatedAt(listing.getDateCreated());
+
+        // the average stays null when nobody has reviewed the listing yet
+        response.setReviewCount(reviewRepository.countByListingId(listing.getId()));
+        Double average = reviewRepository.findAverageRating(listing.getId());
+        if (average != null) {
+            response.setAverageRating(Math.round(average * 10) / 10.0);
+        }
+
         if (listing.getLandlord() != null) {
             response.setLandlordFirstName(listing.getLandlord().getFirstName());
         }

@@ -87,6 +87,16 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                                  @Param("startDate") LocalDate startDate,
                                  @Param("endDate") LocalDate endDate);
 
+    // a stay the student has finished: they vacated it, or it was confirmed and its end date has passed.
+    // Used to decide who may review a listing.
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.listing.id = :listingId " +
+            "AND LOWER(b.student.email) = LOWER(:email) " +
+            "AND (b.status = com.Leon.accommodation_finder.model.BookingStatus.VACATED " +
+            "OR (b.status = com.Leon.accommodation_finder.model.BookingStatus.CONFIRMED AND b.endDate < :today))")
+    long countFinishedStays(@Param("listingId") Long listingId,
+                            @Param("email") String email,
+                            @Param("today") LocalDate today);
+
     // used after vacating: true if the listing still has another booking with the given status
     boolean existsByListingIdAndStatusAndIdNot(Long listingId, BookingStatus status, Long id);
 

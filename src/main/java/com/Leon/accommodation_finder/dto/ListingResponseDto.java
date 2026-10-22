@@ -30,4 +30,7 @@ public class ListingResponseDto {
     private List<String> secondaryImageUrls;
     // when the listing was posted, null for listings created before this field existed
     private LocalDateTime createdAt;
+    // average of the students' star ratings rounded to one decimal, null when there are no reviews yet
+    private Double averageRating;
+    private long reviewCount;
 }
